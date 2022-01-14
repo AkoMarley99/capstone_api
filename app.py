@@ -1,17 +1,32 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
-from flask_cors import CORS
+from io import BytesIO
 
+from flask_cors import CORS
 import os
+
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "app.sqlite")
+
 
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 CORS (app)
+
+
+def validate_image(stream):
+    header = stream.read(512)
+    stream.seek(0)
+    format = imghdr.what(None, header)
+    if not format:
+        return None
+    return '.' + (format if format != 'jpeg' else 'jpg')
+
 
 class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -30,6 +45,11 @@ class JobSchema(ma.Schema):
 
 job_schema = JobSchema()
 multiple_job_schema = JobSchema(many=True)
+
+class FileContent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(300))
+    data = db.Column(db.LargeBinary)
 
 @app.route('/job/add', methods=["POST"])
 def add_job():
@@ -61,10 +81,21 @@ def get_job(id):
     job = db.session.query(Job).filter(Job.id == id).first()
     return jsonify(job_schema.dump(job))
 
+@app.route('/upload', methods= ['POST'])
+def upload():
+    file = request.files['inputFile']
+
+    newFile = FileContent(name=file.filename, data=file.read())
+    db.session.add(newFile)
+    db.session.commit()
 
 
+    return 'saved ' + file.filename + ' to the database!'
 
-
+@app.route('/download/<id>', methods=["GET"])
+def download(id):
+    file_data = db.session.query(FileContent).filter(FileContent.id == id). first()
+    return send_file(BytesIO(file_data.data), download_name="Resume.pdf", as_attachment=True)
 
 
 if __name__ == "__main__" : 
