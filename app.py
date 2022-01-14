@@ -56,7 +56,10 @@ def get_all_jobs():
     all_jobs = db.session.query(Job).all()
     return jsonify(multiple_job_schema.dump(all_jobs))
     
-
+@app.route('/job/get/<id>', methods=["GET"])
+def get_job(id):
+    job = db.session.query(Job).filter(Job.id == id).first()
+    return jsonify(job_schema.dump(job))
 
 
 
