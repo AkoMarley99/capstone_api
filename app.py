@@ -19,14 +19,6 @@ ma = Marshmallow(app)
 CORS (app)
 
 
-def validate_image(stream):
-    header = stream.read(512)
-    stream.seek(0)
-    format = imghdr.what(None, header)
-    if not format:
-        return None
-    return '.' + (format if format != 'jpeg' else 'jpg')
-
 
 class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -50,6 +42,24 @@ class FileContent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(300))
     data = db.Column(db.LargeBinary)
+
+class LogIn(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_name = db.Column(db.String, nullable=False,)
+    password = db.Column(db.String, nullable =False,)
+
+    def __init__(self, user_name, password):
+        self.user_name = user_name
+        self.password = password
+
+
+
+class LogInSchema(ma.Schema):
+     class Meta:
+        fields = ("id", "user_name", "password")
+
+
+login_schema = LogInSchema()
 
 @app.route('/job/add', methods=["POST"])
 def add_job():
@@ -81,6 +91,35 @@ def get_job(id):
     job = db.session.query(Job).filter(Job.id == id).first()
     return jsonify(job_schema.dump(job))
 
+
+@app.route('/job/update/<name>', methods= ["PUT"])
+def update_job(name):
+    if request.content_type != 'application/json':
+        return jsonify('Error: Data must be sent as JSON')
+    
+    put_data = request.get_json()
+    title = put_data.get('title')
+    description = put_data.get_json('description')
+
+    new_record = db.session.query(Job).filter(Job.title == title).first()
+
+    job.description = description
+    db.session.commit()
+    return jsonify(job_schema.dump(job))
+
+@app.route('/job/delete/<id>', methods=["DELETE"])
+def delete_job_by_id(id):
+    job_to_delete = db.session.query(Job).filter(Job.id == id).first()
+    db.session.delete(job_to_delete)
+    db.session.commit()
+
+    return jsonify('Job Deleted!')
+
+
+
+
+
+
 @app.route('/upload', methods= ['POST'])
 def upload():
     file = request.files['inputFile']
@@ -96,6 +135,48 @@ def upload():
 def download(id):
     file_data = db.session.query(FileContent).filter(FileContent.id == id). first()
     return send_file(BytesIO(file_data.data), download_name="Resume.pdf", as_attachment=True)
+
+
+
+
+
+
+
+@app.route('/login/add', methods=["POST"])
+def add_login():
+    if request.content_type != 'application/json':
+        return jsonify('Error: Data must be sent as JSON')
+
+    post_data = request.get_json()
+    user_name = post_data.get('user_name')
+    password = post_data.get('password')
+
+    exissting_login_check = db.session.query(LogIn).filter(LogIn.user_name == user_name).filter(LogIn.password == password).first()
+    if exissting_login_check is not None:
+        return jsonify("created")
+
+    new_record = LogIn(user_name, password)
+    db.session.add(new_record)
+    db.session.commit()
+
+    return jsonify(login_schema.dump(new_record))
+
+@app.route('/login/get/<user_name>', methods=['GET'])
+def get_login(user_name):
+    
+    login = db.session.query(LogIn).filter(LogIn.user_name == user_name).first()
+    return jsonify(login_schema.dump(login))
+
+@app.route('/login/delete/<user_name>', methods=["DELETE"])
+def login_to_delete(user_name):
+    login_to_delete = db.session.query(LogIn).filer(LogIn.user_name == user_name).first()
+    db.session.delete(login_to_delete)
+    db.session.commit()
+
+    return jsonify('Login Deleted!')
+
+
+
 
 
 if __name__ == "__main__" : 
