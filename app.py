@@ -1,25 +1,19 @@
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
-from io import BytesIO
-
 from flask_cors import CORS
 import os
-
+from flask_bcrypt import Bcrypt
 
 app = Flask(__name__)
 basedir = os.path.abspath(os.path.dirname(__file__))
-
-
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "app.sqlite")
-
 
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
+bcrypt = Bcrypt(app)
 CORS (app)
-
-
-
+# _______________________JOB_______________________
 class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String, nullable=False,)
@@ -38,29 +32,24 @@ class JobSchema(ma.Schema):
 job_schema = JobSchema()
 multiple_job_schema = JobSchema(many=True)
 
-class FileContent(db.Model):
+# _______________________USER_______________________
+class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(300))
-    data = db.Column(db.LargeBinary)
+    username = db.Column(db.String, nullable=False, unique=True)
+    password = db.Column(db.String, nullable=False)
 
-class LogIn(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_name = db.Column(db.String, nullable=False,)
-    password = db.Column(db.String, nullable =False,)
-
-    def __init__(self, user_name, password):
-        self.user_name = user_name
+    def __init__(self, username, password):
+        self.username = username
         self.password = password
 
+class UserSchema(ma.Schema):
+    class Meta:
+        fields = ("username", "password")
 
+user_schema = UserSchema()
+multiple_user_schema = UserSchema(many=True)
 
-class LogInSchema(ma.Schema):
-     class Meta:
-        fields = ("id", "user_name", "password")
-
-
-login_schema = LogInSchema()
-
+# _______________________JOB_______________________
 @app.route('/job/add', methods=["POST"])
 def add_job():
     if request.content_type != 'application/json':
@@ -71,8 +60,8 @@ def add_job():
     description = post_data.get('description')
     company = post_data.get('company')
 
-    exissting_job_check = db.session.query(Job).filter(Job.title == title).filter(Job.company == company).first()
-    if exissting_job_check is not None:
+    existing_job_check = db.session.query(Job).filter(Job.title == title).filter(Job.company == company).first()
+    if existing_job_check is not None:
         return jsonify("Error: Job already exists ")
 
     new_record = Job(title, description, company)
@@ -91,21 +80,25 @@ def get_job(id):
     job = db.session.query(Job).filter(Job.id == id).first()
     return jsonify(job_schema.dump(job))
 
-
-@app.route('/job/update/<name>', methods= ["PUT"])
-def update_job(name):
+@app.route('/job/update/<id>', methods= ["PUT"])
+def update_job_by_id(id):
     if request.content_type != 'application/json':
         return jsonify('Error: Data must be sent as JSON')
-    
+
     put_data = request.get_json()
     title = put_data.get('title')
-    description = put_data.get_json('description')
+    description = put_data.get('description')
 
-    new_record = db.session.query(Job).filter(Job.title == title).first()
+    job_to_update = db.session.query(Job).filter(Job.id == id).first()
 
-    job.description = description
+    if title != None:
+        job_to_update.title = title
+    if description != None:
+        job_to_update.description = description
+   
     db.session.commit()
-    return jsonify(job_schema.dump(job))
+
+    return jsonify(job_schema.dump(job_to_update))
 
 @app.route('/job/delete/<id>', methods=["DELETE"])
 def delete_job_by_id(id):
@@ -115,68 +108,67 @@ def delete_job_by_id(id):
 
     return jsonify('Job Deleted!')
 
+# _______________________Verification_______________________
 
-
-
-
-
-@app.route('/upload', methods= ['POST'])
-def upload():
-    file = request.files['inputFile']
-
-    newFile = FileContent(name=file.filename, data=file.read())
-    db.session.add(newFile)
-    db.session.commit()
-
-
-    return 'saved ' + file.filename + ' to the database!'
-
-@app.route('/download/<id>', methods=["GET"])
-def download(id):
-    file_data = db.session.query(FileContent).filter(FileContent.id == id). first()
-    return send_file(BytesIO(file_data.data), download_name="Resume.pdf", as_attachment=True)
-
-
-
-
-
-
-
-@app.route('/login/add', methods=["POST"])
-def add_login():
-    if request.content_type != 'application/json':
-        return jsonify('Error: Data must be sent as JSON')
+@app.route("/user/add", methods=["POST"])
+def add_user():
+    if request.content_type != "application/json":
+        return jsonify("Error: Data must be sent as JSON")
 
     post_data = request.get_json()
-    user_name = post_data.get('user_name')
-    password = post_data.get('password')
+    username = post_data.get("username")
+    password = post_data.get("password")
 
-    exissting_login_check = db.session.query(LogIn).filter(LogIn.user_name == user_name).filter(LogIn.password == password).first()
-    if exissting_login_check is not None:
-        return jsonify("created")
+    pw_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
-    new_record = LogIn(user_name, password)
+    new_record = User(username, pw_hash)
     db.session.add(new_record)
     db.session.commit()
 
-    return jsonify(login_schema.dump(new_record))
+    return jsonify(user_schema.dump(new_record))
 
-@app.route('/login/get/<user_name>', methods=['GET'])
-def get_login(user_name):
-    
-    login = db.session.query(LogIn).filter(LogIn.user_name == user_name).first()
-    return jsonify(login_schema.dump(login))
+@app.route("/user/verification", methods=["POST"])
+def verification():
+    if request.content_type != "application/json":
+        return jsonify("Error: Check your headers!")
 
-@app.route('/login/delete/<user_name>', methods=["DELETE"])
-def login_to_delete(user_name):
-    login_to_delete = db.session.query(LogIn).filer(LogIn.user_name == user_name).first()
-    db.session.delete(login_to_delete)
+    post_data = request.get_json()
+    username = post_data.get("username")
+    password = post_data.get("password")
+
+    user = db.session.query(User).filter(User.username == username).first()
+
+    if user is None:
+        return jsonify("User NOT verified")
+
+    if not bcrypt.check_password_hash(user.password, password):
+        return jsonify("User NOT verified")
+
+    return jsonify("User verified")
+
+@app.route("/user/get", methods=["GET"])
+def get_all_users():
+    all_users = db.session.query(User).all()
+    return jsonify(multiple_user_schema.dump(all_users))
+
+@app.route("/user/get/<username>", methods=["GET"])
+def get_user(username):
+    user = db.session.query(User).filter(User.username == username).first()
+    return jsonify(user_schema.dump(user))
+
+@app.route("/user/updatePassword/<id>", methods=["PUT"])
+def update_password(id):
+    if request.content_type != "application/json":
+        return jsonify("Error: Data must be sent as JSON")
+
+    password = request.get_json().get("password")
+    user = db.session.query(User).filter(User.id == id).first()
+    pw_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+    user.password = pw_hash
+
     db.session.commit()
 
-    return jsonify('Login Deleted!')
-
-
-
+    return jsonify(user_schema.dump(user))
 
 
 if __name__ == "__main__" : 
