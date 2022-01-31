@@ -9,6 +9,12 @@ python-dotenv = "*"
 python-jose = "*"
 flask-cors = "*"
 six = "*"
+gunicorn = "*"
+psycopg2 = "*"
+flask-sqlalchemy = "*"
+flask-marshmallow = "*"
+marshmallow-sqlalchemy = "*"
+flask-bcrypt = "*"
 
 [dev-packages]
 
